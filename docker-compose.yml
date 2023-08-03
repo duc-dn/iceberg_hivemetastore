@@ -1,0 +1,66 @@
+version: '2'
+
+services:
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    environment:
+        - MINIO_ROOT_USER=minioadmin
+        - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+        - "9001:9001"
+        - "9000:9000"
+    # volumes:
+    #     - ./minio/data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+        interval: 30s
+        timeout: 30s
+        retries: 3
+    networks:
+      - lakehouse
+    
+  trino-coordinator:
+    image: 'trinodb/trino:latest'
+    hostname: trino-coordinator
+    container_name: trino
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./docker-config/trino/etc:/etc/trino
+    networks:
+      - lakehouse
+
+  mariadb:
+    image: 'mariadb:10.11.2'
+    hostname: mariadb
+    container_name: mariadb
+    ports:
+      - '3307:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_DATABASE: metastore_db
+    networks:
+      - lakehouse
+
+  hive-metastore:
+    image: 'bitsondatadev/hive-metastore:latest'
+    hostname: hive-metastore
+    container_name: hive-metastore
+    ports:
+      - '9083:9083' # Metastore Thrift
+    volumes:
+      - ./docker-config/hive/metastore-site.xml:/opt/apache-hive-metastore-3.0.0-bin/conf/metastore-site.xml:ro
+    environment:
+      METASTORE_DB_HOSTNAME: mariadb
+    depends_on:
+      - mariadb
+    networks:
+      - lakehouse
+
+networks:
+  lakehouse:
+    driver: bridge
